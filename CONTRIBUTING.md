@@ -20,13 +20,12 @@ subject to a Simplified BSD License) in Contributions.
 ## Other Resources
 
 Discussion of this work occurs on the
-[richsalz working group mailing list](https://mailarchive.ietf.org/arch/browse/richsalz/)
-([subscribe](https://www.ietf.org/mailman/listinfo/richsalz)).  In addition to
-contributions in github, you are encouraged to participate in discussions there.
+[sample working group mailing list](https://mailarchive.ietf.org/arch/browse/sample/)
+([subscribe](https://www.ietf.org/mailman/listinfo/sample)).  In addition to
+contributions in GitHub, you are encouraged to participate in discussions there.
 
 **Note**: Some working groups adopt a policy whereby substantive discussion of
 technical issues needs to occur on the mailing list.
 
 You might also like to familiarize yourself with other
-[working group documents](https://datatracker.ietf.org/wg/richsalz/documents/).
-
+[working group documents](https://datatracker.ietf.org/wg/sample/documents/).
