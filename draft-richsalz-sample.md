@@ -139,7 +139,7 @@ not eliminate that risk.  They take two general strategies:
 1. Informing the endpoints that this downgrade is in place.  End points have
 more information about the details of the connection, and can expose details
 to human controllers. For example, returning a response header such
-as `CDN-Origin-Protocol: HTTP` and preventing customers from removing it.
+as `Protocol-To-Origin: HTTP` and preventing customers from removing it.
 
 2. Restricting the sort of data in transit. Examples of this include
     - Limiting to GET methods.  This prevents unauthenticated writes to the origin.
@@ -159,7 +159,8 @@ Other headers we may want to strip include `Origin`, `Referer`, `Cookie`,
 
 We recommend that CDNs do the following:
 
-* Returning a `CDN-Origin-Protocol: HTTP` response header
+* Returning a `Protocol-To-Origin: HTTP` response header (this could be a
+comma-separated list of protocols or not).
 
 * Limiting to GET
 
