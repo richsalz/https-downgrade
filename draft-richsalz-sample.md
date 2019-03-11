@@ -1,9 +1,9 @@
 ---
 title: "Best practices for TLS Downgrade"
 abbrev: TLS-Downgrade
-docname: draft-richsalz-sample-latest
+docname: draft-richsalz-httpbis-https-downgrade-latest
 category: bcp
-workgroup: TLSWG
+workgroup: HTTPWG
 ipr: trust200902
 
 stand_alone: yes

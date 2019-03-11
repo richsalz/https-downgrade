@@ -2,9 +2,9 @@
 
 This is the working area for the individual Internet-Draft, "Best practices for TLS Downgrade".
 
-* [Editor's Copy](https://richsalz.github.io/draft-richsalz-sample.html)
-* [Individual Draft](https://tools.ietf.org/html/draft-richsalz-sample)
-* [Compare Editor's Copy to Individual Draft](https://richsalz.github.io/draft-richsalz-sample/#go.draft-richsalz-sample.diff)
+* [Editor's Copy](https://richsalz.github.io/draft-richsalz-httpbis-https-downgrade.html)
+* [Individual Draft](https://tools.ietf.org/html/draft-richsalz-httpbis-https-downgrade)
+* [Compare Editor's Copy to Individual Draft](https://richsalz.github.io/draft-richsalz-httpbis-https-downgrade/#go.draft-richsalz-httpbis-https-downgrade.diff)
 
 ## Building the Draft
 
@@ -21,4 +21,4 @@ This requires that you have the necessary software installed.  See
 ## Contributing
 
 See the
-[guidelines for contributions](https://github.com/richsalz/draft-richsalz-sample/blob/master/CONTRIBUTING.md).
+[guidelines for contributions](https://github.com/richsalz/draft-richsalz-httpbis-https-downgrade/blob/master/CONTRIBUTING.md).
