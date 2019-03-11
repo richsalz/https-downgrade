@@ -145,6 +145,8 @@ more information about the details of the connection, and can expose details
 to human controllers. For example, returning a response header such
 as `Protocol-To-Origin: cleartext` and preventing customers from removing it.
 Clients may then choose some manner in which to expose this to end-users.
+(Some other proprietary implementations of this response header have included
+`X-Forward-Proto: http` and `CDN-Origin-Protocol: http`.)
 
 2. Restricting the sort of data in transit when downgrading from HTTPS to
    cleartext HTTP. Examples of this include:
