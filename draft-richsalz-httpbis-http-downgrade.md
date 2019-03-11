@@ -1,7 +1,7 @@
 ---
 title: "Best practices for TLS Downgrade"
 abbrev: TLS-Downgrade
-docname: draft-richsalz-httpbis-https-downgrade-latest
+docname: draft-richsalz-httpbis-https-downgrade-00
 category: bcp
 workgroup: HTTPWG
 ipr: trust200902
@@ -14,21 +14,37 @@ author:
     ins: B. Sniffen
     name: Brian Sniffen
     org: Akamai Technologies
+    street: 145 Broadway
+    city: Cambridge
+    code: 02139
+    country: US
     email: bsniffen@akamai.com
  -
     ins: M. Bishop
     name: Mike Bishop
     org: Akamai Technologies
+    street: 145 Broadway
+    city: Cambridge
+    code: 02139
+    country: US
     email: mbishop@akamai.com
  -
     ins: E. Nygren
     name: Erik Nygren
     org: Akamai Technologies
+    street: 145 Broadway
+    city: Cambridge
+    code: 02139
+    country: US
     email: nygren@akamai.com
  -
     ins: R. Salz
     name: Rich Salz
     org: Akamai Technologies
+    street: 145 Broadway
+    city: Cambridge
+    code: 02139
+    country: US
     email: rsalz@akamai.com
 
 --- abstract
