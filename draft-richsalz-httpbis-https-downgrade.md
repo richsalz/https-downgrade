@@ -222,11 +222,6 @@ it easier for adversaries who control the network between CDN caches and origin
 correlation attacks are possible, even if ostensible PII information is stripped
 at the CDN.)
 
-> TODO: It is easy to say that everyone should use TLS everywhere (cite). Let's
-> support that position by explaining which adversaries can win which games here
-> -- including some where the adversary has an advantage in an HTTP-to-HTTPS
-> connection _over a connection with no TLS at all_.
-
 ## Control of the network between the cache and the origin
 
 ISPs on the HTTP path, including nation states at their borders, can surveil
@@ -259,8 +254,7 @@ the case of HTTP _upgrade_, in which a server makes a similar decision based on
 seeing HTTPS on its end of the connection.  In cases where HTTP requests are
 upgraded to HTTPS, CDN or proxy operators need to work with origin operators to
 control this complexity and prevent the complementary attack, such as by only
-performing upgrades for cache-able, static, and idempotent content.  (TODO:
-Future versions of this draft should expand on this topic in more detail.)
+performing upgrades for cache-able, static, and idempotent content.
 
 --- back
 
