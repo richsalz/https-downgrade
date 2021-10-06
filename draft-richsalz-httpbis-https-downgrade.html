@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>Best practices for TLS Downgrade</title>
+<meta content="Brian Sniffen" name="author">
+<meta content="Mike Bishop" name="author">
+<meta content="Erik Nygren" name="author">
+<meta content="Rich Salz" name="author">
+<meta content='
+       Content providers delivering content via CDNs will sometimes deliver content
+over HTTPS (or both HTTPS and HTTP) but configure the CDN to pull from the
+origin over cleartext and unauthenticated HTTP.  From the perspective of a
+client, it appears that their requests and associated responses are delivered
+over HTTPS, while in reality their requests are being sent across the network
+in-the-clear and responses are delivered unauthenticated.  This exposes user
+request data to pervasive monitoring  ; it also means response data
+may be tampered with by active adversaries.  Terminating TLS
+connections on a load balancer and contacting a backend over cleartext has
+long been common within data centers, but doing this TLS termination and
+downgrade to HTTP at a CDN introduces additional risk when the unprotected
+traffic is sent over the general Internet, sometimes across national
+boundaries. 
+       While it would be nice to say "never do this," customer demand, content
+provider use-cases, and market forces today make it impossible for CDNs to not
+support downgrade.  However, following a set of best practices can provide
+visibility into when this is happening and can reduce some of the risks. 
+    ' name="description">
+<meta content="xml2rfc 2.47.0" name="generator">
+<meta content="draft-richsalz-httpbis-https-downgrade-latest" name="ietf.draft">
+<link href="draft-richsalz-httpbis-https-downgrade.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+html {
+  --background-color: #fff;
+  --text-color: #222;
+  --title-color: #191919;
+  --link-color: #2a6496;
+  --highlight-color: #f9f9f9;
+  --line-color: #eee;
+  --pilcrow-weak: #ddd;
+  --pilcrow-strong: #bbb;
+  --small-font-size: 14.5px;
+  scrollbar-color: #bbb #eee;
+}
+@media (prefers-color-scheme: dark) {
+html {
+  --background-color: #121212;
+  --text-color: #f0f0f0;
+  --title-color: #fff;
+  --link-color: #4da4f0;
+  --highlight-color: #282828;
+  --line-color: #444;
+  --pilcrow-weak: #444;
+  --pilcrow-strong: #666;
+  scrollbar-color: #777 #333;
+}
+}
+body {
+  max-width: 600px;
+  margin: 75px auto;
+  padding: 0 5px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font: 16px/22px "Lora", serif;
+  scroll-behavior: smooth;
+}
+
+.ears {
+  display: none;
+}
+
+/* headings */
+#title, h1, h2, h3, h4, h5, h6 {
+  font-family: "Cabin Condensed", sans-serif;
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+  font-size-adjust: 0.5;
+  color: var(--title-color);
+}
+#title {
+  font-size: 32px;
+  line-height: 40px;
+  clear: both;
+}
+#title, #rfcnum {
+  margin: 1.5em 0 0.2em;
+}
+#rfcnum + #title {
+  margin: 0.2em 0;
+}
+
+h1, h2, h3 {
+  font-size: 22px;
+  line-height: 27px;
+}
+h4, h5, h6 {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+/* general structure */
+.author {
+  padding-bottom: 0.3em;
+}
+#abstract+p {
+  font-size: 18px;
+  line-height: 24px;
+}
+#abstract+p code, #abstract+p samp, #abstract+p tt {
+  font-size: 16px;
+  line-height: 0;
+}
+
+p {
+  padding: 0;
+  margin: 0.5em 0;
+  text-align: left;
+}
+div {
+  margin: 0;
+}
+.alignRight.art-text {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  padding: 0.5em 1em 0;
+  margin-bottom: 0.5em;
+}
+.alignRight.art-text pre {
+  padding: 0;
+  width: auto;
+}
+.alignRight {
+  margin: 1em 0;
+}
+.alignRight > *:first-child {
+  border: none;
+  margin: 0;
+  float: right;
+  clear: both;
+}
+.alignRight > *:nth-child(2) {
+  clear: both;
+  display: block;
+  border: none;
+}
+svg {
+  display: block;
+}
+.alignCenter.art-text {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  padding: 0.5em 1em 0;
+  margin-bottom: 0.5em;
+}
+.alignCenter.art-text pre {
+  padding: 0;
+  width: auto;
+}
+.alignCenter {
+  margin: 1em 0;
+}
+.alignCenter > *:first-child {
+  border: none;
+  /* this isn't optimal, but it's an existence proof.  PrinceXML doesn't
+     support flexbox yet.
+  */
+  display: table;
+  margin: 0 auto;
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 0.5em 2em;
+}
+ol ol, ul ul, ol ul, ul ol {
+  margin-left: 1em;
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+.ulCompact li {
+  margin: 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+}
+ul.empty li, .ulEmpty li {
+  margin-top: 0.5em;
+}
+ul.compact, .ulCompact,
+ol.compact, .olCompact {
+  line-height: 100%;
+  margin: 0 0 0 2em;
+}
+
+/* definition lists */
+dl {
+}
+dl > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl > dd {
+  margin-bottom: .8em;
+  min-height: 1.3em;
+}
+dl.compact > dd, .dlCompact > dd {
+  margin-bottom: 0em;
+}
+dl > dd > dl {
+  margin-top: 0.5em;
+  margin-bottom: 0em;
+}
+dd.break {
+  display: none;
+}
+
+/* links */
+a, a[href].selfRef:hover {
+  text-decoration: none;
+}
+a[href].selfRef {
+  color: var(--text-color);
+}
+a[href] {
+  color: var(--link-color);
+}
+a[href]:hover {
+  text-decoration: underline;
+}
+a[href].selfRef:hover {
+  background-color: var(--highlight-color);
+}
+a.xref {
+  white-space: nowrap;
+}
+
+/* Figures */
+tt, code, pre {
+  background-color: var(--highlight-color);
+  font: 14px/22px 'Oxygen Mono', monospace;
+}
+tt, code {
+  /* changing the font for inline elements leads to different ascender
+     and descender heights; as we want to retain baseline alignment,
+     remove leading to avoid altering the final height of lines */
+  line-height: 0;
+}
+pre {
+  border: 1px solid var(--line-color);
+  font-size: 13.5px;
+  line-height: 16px;
+  letter-spacing: -0.2px;
+  margin: 5px;
+  padding: 5px;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0.5em 0;
+  padding: 0;
+}
+figure blockquote {
+  margin: 0.8em 0.4em 0.4em;
+}
+figcaption, caption {
+  font-style: italic;
+  margin: 0.5em 1.5em;
+  text-align: left;
+}
+@media screen {
+  pre {
+    display: inline-block;
+    overflow-x: auto;
+    max-width: 100%;
+    width: calc(100% - 22px - 1em);
+  }
+  figure pre {
+    display: block;
+    width: calc(100% - 25px);
+  }
+  pre + .pilcrow {
+    display: inline-block;
+    vertical-align: text-bottom;
+    padding-bottom: 8px;
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 0 2em;
+  font-style: italic;
+}
+blockquote {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  margin: 1em 0;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+
+/* tables */
+table {
+  max-width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+}
+table.right {
+  margin-left: auto;
+}
+table.center {
+  margin-left: auto;
+  margin-right: auto;
+}
+table.left {
+  margin-right: auto;
+}
+thead, tbody {
+  border: 1px solid var(--line-color);
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 10px;
+}
+th {
+  background-color: var(--line-color);
+}
+tr:nth-child(2n) > td {
+  background-color: var(--background-color);
+}
+tr:nth-child(2n+1) > td {
+  background-color: var(--highlight-color);
+}
+thead+tbody > tr:nth-child(2n) > td {
+  background-color: var(--highlight-color);
+}
+thead+tbody > tr:nth-child(2n+1) > td {
+  background-color: var(--background-color);
+}
+table caption {
+  margin: 0;
+  padding: 3px 0 3px 1em;
+}
+table p {
+  margin: 0;
+}
+
+/* pilcrow */
+a.pilcrow {
+  margin-left: 3px;
+  opacity: 0.2;
+  user-select: none;
+}
+a.pilcrow[href] { color: var(--pilcrow-weak); }
+a.pilcrow[href]:hover { text-decoration: none; }
+@media not print {
+  :hover > a.pilcrow {
+    opacity: 1;
+  }
+  a.pilcrow[href]:hover {
+    color: var(--pilcrow-strong);
+    background-color: transparent;
+  }
+}
+@media print {
+  a.pilcrow {
+    display: none;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid var(--line-color);
+}
+.bcp14 {
+  font-variant: small-caps;
+}
+
+.role {
+  font-variant: all-small-caps;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: var(--small-font-size);
+  line-height: 18px;
+  --identifier-width: 8em;
+}
+#identifiers dt {
+  width: var(--identifier-width);
+  margin: 0;
+  clear: left;
+  float: left;
+  text-align: right;
+}
+#identifiers dd {
+  margin: 0 0 0 calc(1em + var(--identifier-width));
+  min-width: 5em;
+}
+#identifiers .authors .author {
+  display: inline-block;
+  margin-right: 1.5em;
+}
+#identifiers .authors .org {
+  font-style: italic;
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #999;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+}
+.docInfo .prepared {
+  float: left;
+}
+.docInfo .prepared {
+  float: right;
+}
+
+/* table of contents */
+#toc {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+}
+#toc nav ul {
+  margin: 0 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+#toc nav li {
+  line-height: 1.3em;
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+#toc a.xref {
+  white-space: normal;
+}
+/* references */
+.references dt {
+  text-align: right;
+  font-weight: bold;
+  min-width: 7em;
+}
+.references dd {
+  margin-left: 8em;
+  overflow: auto;
+}
+
+.refInstance {
+  margin-bottom: 1.25em;
+}
+
+.references .ascii {
+  margin-bottom: 0.25em;
+}
+
+/* index */
+.index ul {
+  margin: 0 0 0 1em;
+  padding: 0;
+  list-style: none;
+}
+.index ul ul {
+  margin: 0;
+}
+.index li {
+  margin: 0;
+  text-indent: -2em;
+  padding-left: 2em;
+  padding-bottom: 5px;
+}
+.indexIndex {
+  margin: 0.5em 0 1em;
+}
+.index a {
+  font-weight: 700;
+}
+/* make the index two-column on all but the smallest screens */
+@media (min-width: 500px) {
+  .index ul {
+    column-count: 2;
+    column-gap: 20px;
+  }
+  .index ul ul {
+    column-count: 1;
+    column-gap: 0;
+  }
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  margin: 1em 0;
+}
+address.vcard .nameRole {
+  font-weight: 700;
+  margin-left: 0;
+}
+address.vcard .label {
+  margin: 0.5em 0;
+}
+address.vcard .type {
+  display: none;
+}
+.alternative-contact {
+  margin: 1.5em 0 1em;
+}
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+@media (min-width: 500px) {
+  #authors-addresses > section {
+    column-count: 2;
+    column-gap: 20px;
+  }
+  #authors-addresses > section > h2 {
+    column-span: all;
+  }
+  /* hack for break-inside: avoid-column */
+  #authors-addresses address {
+    display: inline-block;
+    break-inside: avoid-column;
+  }
+}
+
+.rfcEditorRemove p:first-of-type {
+  font-style: italic;
+}
+.cref {
+  background-color: rgba(249, 232, 105, 0.3);
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+/* alternative layout for smaller screens */
+@media screen and (max-width: 929px) {
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 0;
+    margin: 0;
+    border-bottom: 1px solid #ccc;
+    opacity: 0.6;
+  }
+  #toc.active {
+      opacity: 1;
+  }
+  #toc h2 {
+    margin: 0;
+    padding: 2px 0 2px 6px;
+    padding-right: 1em;
+    font-size: 18px;
+    line-height: 24px;
+    min-width: 190px;
+    text-align: right;
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+  }
+  #toc h2::before { /* css hamburger */
+    float: right;
+    position: relative;
+    width: 1em;
+    height: 1px;
+    left: -164px;
+    margin: 8px 0 0 0;
+    background: white none repeat scroll 0 0;
+    box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+    content: "";
+  }
+  #toc nav {
+    display: none;
+    background-color: var(--background-color);
+    padding: 0.5em 1em 1em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    height: calc(100vh - 48px);
+    border-left: 1px solid #ddd;
+  }
+  #toc.active nav {
+    display: block;
+  }
+  /* Make the collapsed ToC header render white on gray also when it's a link */
+  #toc h2 a,
+  #toc h2 a:link,
+  #toc h2 a:focus,
+  #toc h2 a:hover,
+  #toc a.toplink,
+  #toc a.toplink:hover {
+    color: white;
+    background-color: #444;
+    text-decoration: none;
+  }
+  #toc a.toplink {
+    margin-top: 2px;
+  }
+}
+
+/* alternative layout for wide screens */
+@media screen and (min-width: 930px) {
+  body {
+    padding-right: 360px;
+    padding-right: calc(min(180px + 20%, 500px));
+  }
+  #toc {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    right: calc(50vw - 480px);
+    width: 312px;
+    margin: 0;
+    padding: 0;
+    z-index: 1;
+  }
+  #toc h2 {
+    margin: 0;
+    padding: 0.25em 1em 1em 0;
+  }
+  #toc nav {
+    display: block;
+    height: calc(90vh - 84px);
+    bottom: 0;
+    padding: 0.5em 0 2em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  #toc nav > ul  {
+    margin-bottom: 2em;
+  }
+  #toc ul {
+    margin: 0 0 0 4px;
+    font-size: var(--small-font-size);
+  }
+  #toc ul p, #toc ul li {
+    margin: 2px 0;
+    line-height: 22px;
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc, #n-introduction {
+    page-break-before: always;
+  }
+  #toc {
+    border-top: none;
+    padding-top: 0;
+  }
+  figure, pre {
+    page-break-inside: avoid;
+  }
+  figure {
+    overflow: scroll;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  h2+*, h3+*, h4+*, h5+*, h6+* {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+}
+
+/* Changes introduced to fix issues found during implementation */
+
+/* Separate body from document info even without intervening H1 */
+section {
+  clear: both;
+}
+
+/* Top align author divs, to avoid names without organization dropping level with org names */
+.author {
+  vertical-align: top;
+}
+
+/* Style section numbers with more space between number and title */
+.section-number {
+  padding-right: 0.5em;
+}
+
+/* Add styling for a link in the ToC that points to the top of the document */
+a.toplink {
+  float: right;
+  margin: 8px 0.5em 0;
+}
+
+/* Fix the dl styling to match the RFC 7992 attributes */
+dl > dt,
+dl.dlParallel > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl.dlNewline > dt {
+  float: none;
+}
+
+/* Provide styling for table cell text alignment */
+table .text-left, table .text-left {
+  text-align: left;
+}
+table .text-center, table .text-center {
+  text-align: center;
+}
+table .text-right, table .text-right {
+  text-align: right;
+}
+
+/* Make the alternative author contact information look less like just another
+   author, and group it closer with the primary author contact information */
+.alternative-contact {
+  margin: 0.5em 0 0.25em 0;
+}
+address .non-ascii {
+  margin: 0 0 0 2em;
+}
+
+/* With it being possible to set tables with alignment
+  left, center, and right, { width: 100%; } does not make sense */
+table {
+  width: auto;
+}
+
+/* Avoid reference text that sits in a block with very wide left margin,
+   because of a long floating dt label.*/
+.references dd {
+  overflow: visible;
+}
+
+/* Control caption placement */
+caption {
+  caption-side: bottom;
+}
+
+/* Limit the width of the author address vcard, so names in right-to-left
+   script don't end up on the other side of the page. */
+
+address.vcard {
+  max-width: 20em;
+  margin-right: auto;
+}
+
+/* For address alignment dependent on LTR or RTL scripts */
+address div.left {
+  text-align: left;
+}
+address div.right {
+  text-align: right;
+}
+
+/* Give the table caption label the same styling as the figcaption */
+
+@media print {
+  .toplink {
+    display: none;
+  }
+
+  /* avoid overwriting the top border line with the ToC header */
+  #toc {
+    padding-top: 1px;
+  }
+
+  /* Avoid page breaks inside dl and author address entries */
+  dd {
+    page-break-before: avoid;
+  }
+  .vcard {
+    page-break-inside: avoid;
+  }
+
+}
+/* Tweak the bcp14 keyword presentation */
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+</style>
+
+</head>
+<body>
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">TLS-Downgrade</td>
+<td class="right">October 2021</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Sniffen, et al.</td>
+<td class="center">Expires 9 April 2022</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">HTTPWG</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-richsalz-httpbis-https-downgrade-latest</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2021-10-06" class="published">6 October 2021</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Best Current Practice</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2022-04-09">9 April 2022</time></dd>
+<dt class="label-authors">Authors:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">B. Sniffen</div>
+<div class="org">Akamai Technologies</div>
+</div>
+<div class="author">
+      <div class="author-name">M. Bishop</div>
+<div class="org">Akamai Technologies</div>
+</div>
+<div class="author">
+      <div class="author-name">E. Nygren</div>
+<div class="org">Akamai Technologies</div>
+</div>
+<div class="author">
+      <div class="author-name">R. Salz</div>
+<div class="org">Akamai Technologies</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">Best practices for TLS Downgrade</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">Content providers delivering content via CDNs will sometimes deliver content
+over HTTPS (or both HTTPS and HTTP) but configure the CDN to pull from the
+origin over cleartext and unauthenticated HTTP.  From the perspective of a
+client, it appears that their requests and associated responses are delivered
+over HTTPS, while in reality their requests are being sent across the network
+in-the-clear and responses are delivered unauthenticated.  This exposes user
+request data to pervasive monitoring <span>[<a href="#RFC7258" class="xref">RFC7258</a>]</span>; it also means response data
+may be tampered with by active adversaries.  Terminating TLS
+connections on a load balancer and contacting a backend over cleartext has
+long been common within data centers, but doing this TLS termination and
+downgrade to HTTP at a CDN introduces additional risk when the unprotected
+traffic is sent over the general Internet, sometimes across national
+boundaries.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+<p id="section-abstract-2">While it would be nice to say "never do this," customer demand, content
+provider use-cases, and market forces today make it impossible for CDNs to not
+support downgrade.  However, following a set of best practices can provide
+visibility into when this is happening and can reduce some of the risks.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 9 April 2022.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2021 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document. Code Components extracted from this
+            document must include Simplified BSD License text as described in
+            Section 4.e of the Trust Legal Provisions and are provided without
+            warranty as described in the Simplified BSD License.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="toc compact ulEmpty">
+<li class="toc compact ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1" class="keepWithNext"><a href="#section-1" class="xref">1</a>.  <a href="#name-background-and-motivation" class="xref">Background and Motivation</a><a href="#section-toc.1-1.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1" class="keepWithNext"><a href="#section-2" class="xref">2</a>.  <a href="#name-recommended-alternatives" class="xref">Recommended alternatives</a><a href="#section-toc.1-1.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1" class="keepWithNext"><a href="#section-3" class="xref">3</a>.  <a href="#name-potential-risk-mitigations" class="xref">Potential risk mitigations</a><a href="#section-toc.1-1.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="xref">4</a>.  <a href="#name-recommendations" class="xref">Recommendations</a><a href="#section-toc.1-1.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="xref">5</a>.  <a href="#name-alternative-approaches" class="xref">Alternative approaches</a><a href="#section-toc.1-1.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="xref">6</a>.  <a href="#name-security-considerations" class="xref">Security Considerations</a><a href="#section-toc.1-1.6.1" class="pilcrow">¶</a></p>
+<ul class="toc compact ulEmpty">
+<li class="toc compact ulEmpty" id="section-toc.1-1.6.2.1">
+                <p id="section-toc.1-1.6.2.1.1"><a href="#section-6.1" class="xref">6.1</a>.  <a href="#name-risks-of-doing-downgrade" class="xref">Risks of doing downgrade</a><a href="#section-toc.1-1.6.2.1.1" class="pilcrow">¶</a></p>
+</li>
+              <li class="toc compact ulEmpty" id="section-toc.1-1.6.2.2">
+                <p id="section-toc.1-1.6.2.2.1"><a href="#section-6.2" class="xref">6.2</a>.  <a href="#name-control-of-the-network-betw" class="xref">Control of the network between the cache and the origin</a><a href="#section-toc.1-1.6.2.2.1" class="pilcrow">¶</a></p>
+</li>
+              <li class="toc compact ulEmpty" id="section-toc.1-1.6.2.3">
+                <p id="section-toc.1-1.6.2.3.1"><a href="#section-6.3" class="xref">6.3</a>.  <a href="#name-confused-deputy-issues-at-t" class="xref">Confused-deputy issues at the browser or origin</a><a href="#section-toc.1-1.6.2.3.1" class="pilcrow">¶</a></p>
+</li>
+            </ul>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="xref">7</a>.  <a href="#name-normative-references" class="xref">Normative References</a><a href="#section-toc.1-1.7.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-appendix.a" class="xref">Appendix A</a>.  <a href="#name-acknowledgements" class="xref">Acknowledgements</a><a href="#section-toc.1-1.8.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="toc compact ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-appendix.b" class="xref"></a><a href="#name-authors-addresses" class="xref">Authors' Addresses</a><a href="#section-toc.1-1.9.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="background-and-motivation">
+<section id="section-1">
+      <h2 id="name-background-and-motivation">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-background-and-motivation" class="section-name selfRef">Background and Motivation</a>
+      </h2>
+<p id="section-1-1">Browsers are helping drive a push to universal HTTPS through a variety of
+mechanisms, including:<a href="#section-1-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1-2.1">Show HTTP as "not secure"<a href="#section-1-2.1" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-2.2">Showing mixed-content warnings when images or advertisements are HTTP on an
+HTTPS base page<a href="#section-1-2.2" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-2.3">Making "powerful" new web features available only for HTTPS<a href="#section-1-2.3" class="pilcrow">¶</a>
+</li>
+      </ul>
+<p id="section-1-3">On mobile, app stores sometimes require HTTPS for acceptance.<a href="#section-1-3" class="pilcrow">¶</a></p>
+<p id="section-1-4">These factors have pushed many content providers to quickly enable HTTPS, even
+when their origin infrastructure is not ready or not perceived as being ready.
+Being able to use a CDN to convert HTTPS to HTTP has been looked at as a fast
+path for getting onto HTTPS quickly.  Doing this has value in protecting
+requests and responses over the last mile, but admittedly does not address or
+worsens some other types of attacks (such as pervasive monitoring, or
+corruption and manipulation of content crossing national boundaries).<a href="#section-1-4" class="pilcrow">¶</a></p>
+<p id="section-1-5">Delivering content over HTTPS but fetching it insecurely over HTTP is done for
+a variety of reasons, some of which have historic motivations with better
+alternatives today, but where content providers are resistant to change. This
+includes:<a href="#section-1-5" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1-6.1">Lack of HTTPS support in origin infrastructure, such as due to using load
+balancing hardware that does not support HTTPS, has bad performance
+characteristics with HTTPS, or which only supports SSLv3.<a href="#section-1-6.1" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-6.2">A perception that HTTPS is more expensive to deliver.  In some cases content
+providers may have origin infrastructure using old hardware where this is a
+real challenge and they lack the budget to upgrade to servers or load
+balancers that can handle HTTPS well.<a href="#section-1-6.2" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-6.3">A perception that using HTTPS introduces performance issues, such as due to
+the additional round trips required to establish connections.  This can be a
+real issue for origins that lack persistent connection or session resumption
+support.<a href="#section-1-6.3" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-6.4">Challenges in managing origin certificates, or a perception that it is hard
+to get TLS certificates.  Automation with providers such as LetsEncrypt help
+here, but some content provider origins may be using software or hardware
+elements that don't yet integrate well with Auto-DV or may have organizational
+policies against using DV certificates.<a href="#section-1-6.4" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-6.5">Delivering the same library of content to end-users over both HTTP and
+HTTPS, but wanting the CDN to cache any given object only once.  This can be
+better addressed by always fetching content via HTTPS and storing in a cache
+accessible for both HTTP and HTTPS requests, but this faces challenges for
+transitioning from an entirely HTTP-fetched-and-served content library to one
+that is served over a mixture of HTTP and HTTPS.<a href="#section-1-6.5" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-1-6.6">A perception that there is no risk to their users or brand reputation,
+sometimes due to thinking of pervasive monitoring and content manipulation as
+esoteric threats that don't apply in their case.  For example, content
+providers delivering on-demand streaming movies may not see a threat from
+using HTTP and may view DRM as addressing most of their immediate concerns.<a href="#section-1-6.6" class="pilcrow">¶</a>
+</li>
+      </ul>
+<p id="section-1-7">There is also a closely-related issue where content delivered over HTTPS has
+been pushed to origin infrastructure over an insecure protocol.  For example,
+content uploaded to a storage service over an insecure protocol such as FTP, or
+live streams pushed from encoders to ingest entry points over an insecure
+protocol.  This has the added risk that authenticators may be unprotected
+on-the-wire.<a href="#section-1-7" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="recommended-alternatives">
+<section id="section-2">
+      <h2 id="name-recommended-alternatives">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-recommended-alternatives" class="section-name selfRef">Recommended alternatives</a>
+      </h2>
+<p id="section-2-1">The "right thing" to do is to use modern secure protocols and cryptography for
+secrecy and authentication for the request and the response when interacting
+with content origin sources: HTTPS for pull-through caches, and protocols such
+as SCP or SFTP or FTP-over-TLS or HTTPS POSTs for pushed data.<a href="#section-2-1" class="pilcrow">¶</a></p>
+<p id="section-2-2">Origin sites that avoided TLS for fear of a performance hit should collect
+data on the actual costs with modern implementations and modern crypto-support
+hardware.  These are expected to be under 2% CPU overhead, especially when
+persistent connections are enabled.  Auto-DV certificate management can
+make origin certificate management straight-forward and automateable.<a href="#section-2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="potential-risk-mitigations">
+<section id="section-3">
+      <h2 id="name-potential-risk-mitigations">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-potential-risk-mitigations" class="section-name selfRef">Potential risk mitigations</a>
+      </h2>
+<p id="section-3-1">An intermediate cache can take several actions to reduce the risk of
+unpleasant consequences from using TLS downgrade -- though these practices do
+not eliminate that risk.  They take two general strategies:<a href="#section-3-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-3-2">
+        <li id="section-3-2.1">Informing the endpoints that this downgrade is in place.  End points have
+more information about the details of the connection, and can expose details
+to human controllers. For example, returning a response header such
+as <code>Protocol-To-Origin: cleartext</code> and preventing customers from removing it.
+Clients may then choose some manner in which to expose this to end-users.
+(Some other proprietary implementations of this response header have included
+<code>X-Forward-Proto: http</code> and <code>CDN-Origin-Protocol: http</code>.)<a href="#section-3-2.1" class="pilcrow">¶</a>
+</li>
+        <li id="section-3-2.2">
+          <p id="section-3-2.2.1">Restricting the sort of data in transit when downgrading from HTTPS to
+cleartext HTTP. Examples of this include:<a href="#section-3-2.2.1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-3-2.2.2.1">Limiting to GET methods.  This prevents unauthenticated writes to the origin.<a href="#section-3-2.2.2.1" class="pilcrow">¶</a>
+</li>
+            <li class="normal" id="section-3-2.2.2.2">Refusing to downgrade requests for <code>/</code> , <code>/index/</code>, or <code>/index.html</code>.
+This prevents accidental delivery of the entire site.  The goal is to
+rapidly detect a misconfiguration with too much downgrading by breaking
+the site.<a href="#section-3-2.2.2.2" class="pilcrow">¶</a>
+</li>
+            <li class="normal" id="section-3-2.2.2.3">Limiting the content types or file extensions (e.g., to streaming media or
+other static media assets).<a href="#section-3-2.2.2.3" class="pilcrow">¶</a>
+</li>
+            <li class="normal" id="section-3-2.2.2.4">Stripping outgoing request headers containing potential identifiers
+(Cookie, etc)<a href="#section-3-2.2.2.4" class="pilcrow">¶</a>
+</li>
+            <li class="normal" id="section-3-2.2.2.5">Stripping query strings<a href="#section-3-2.2.2.5" class="pilcrow">¶</a>
+</li>
+          </ul>
+</li>
+      </ol>
+<p id="section-3-3">In practice, stripping query strings breaks an enormous amount of Web traffic:
+searches, beacons, and the selection apparatus of streaming media clients.
+Mechanisms that rely on lists of what is allowed (file extensions) or what is
+banned (such as "Cookie" headers) rely on an implausibly detailed and
+up-to-date models of Web use.<a href="#section-3-3" class="pilcrow">¶</a></p>
+<p id="section-3-4">Other headers that may wish to be stripped from outgoing requests include
+<code>X-Forwarded-For</code>, <code>Origin</code>, <code>Referer</code>, <code>Cookie</code>, <code>Cookie2</code>, and those starting
+with <code>Sec-</code> or <code>Proxy-</code>.<a href="#section-3-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="recommendations">
+<section id="section-4">
+      <h2 id="name-recommendations">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-recommendations" class="section-name selfRef">Recommendations</a>
+      </h2>
+<p id="section-4-1">It is recommended that CDNs do at least the following as default behaviors as part of TLS downgrade:<a href="#section-4-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4-2.1">Providing and encouraging better alternatives (such as always fetching securely over HTTPS but making static objects available in a shared cache that can also be accessed via HTTP requests).<a href="#section-4-2.1" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-4-2.2">Returning a <code>Protocol-To-Origin: cleartext</code> response header (which may be a comma-separated list of protocols when multiple hops are involved).<a href="#section-4-2.2" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-4-2.3">Limiting downgrade requests to GET.<a href="#section-4-2.3" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-4-2.4">Refusing requests for <code>/</code> , <code>/index/</code>,or <code>/index.html</code>.<a href="#section-4-2.4" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-4-2.5">Strip at least some headers that may include personal identifiers or sensitive information.<a href="#section-4-2.5" class="pilcrow">¶</a>
+</li>
+      </ul>
+</section>
+</div>
+<div id="alternative-approaches">
+<section id="section-5">
+      <h2 id="name-alternative-approaches">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-alternative-approaches" class="section-name selfRef">Alternative approaches</a>
+      </h2>
+<p id="section-5-1">Some other approaches may also help address the risks:<a href="#section-5-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-5-2.1">Use a VPN or IPSEC or other secure channel between the CDN and the origin.<a href="#section-5-2.1" class="pilcrow">¶</a>
+</li>
+        <li class="normal" id="section-5-2.2">Validate asymmetric signatures of content at the CDN before serving, such as
+for software downloads. This helps with integrity, but still exposes
+confidentiality risks.<a href="#section-5-2.2" class="pilcrow">¶</a>
+</li>
+      </ul>
+</section>
+</div>
+<div id="security-considerations">
+<section id="section-6">
+      <h2 id="name-security-considerations">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<div id="risks-of-doing-downgrade">
+<section id="section-6.1">
+        <h3 id="name-risks-of-doing-downgrade">
+<a href="#section-6.1" class="section-number selfRef">6.1. </a><a href="#name-risks-of-doing-downgrade" class="section-name selfRef">Risks of doing downgrade</a>
+        </h3>
+<p id="section-6.1-1">Downgrades allow protection of last-mile connections to end-users, but they make
+it easier for adversaries who control the network between CDN caches and origin
+(such as at national boundaries) to poison caches or perform surveillance (as
+correlation attacks are possible, even if ostensible PII information is stripped
+at the CDN.)<a href="#section-6.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="control-of-the-network-between-the-cache-and-the-origin">
+<section id="section-6.2">
+        <h3 id="name-control-of-the-network-betw">
+<a href="#section-6.2" class="section-number selfRef">6.2. </a><a href="#name-control-of-the-network-betw" class="section-name selfRef">Control of the network between the cache and the origin</a>
+        </h3>
+<p id="section-6.2-1">ISPs on the HTTP path, including nation states at their borders, can surveil
+traffic.  They can expect to get end-user IP information from
+<code>X-Forwarded-For</code> or similar. In some circumstances, they can learn more from
+correlated timing and sizes.  This is principally a risk to <em>secrecy</em>.<a href="#section-6.2-1" class="pilcrow">¶</a></p>
+<p id="section-6.2-2">Active adversaries can also corrupt or modify content.<a href="#section-6.2-2" class="pilcrow">¶</a></p>
+<p id="section-6.2-3">For executable content (such as software downloads or javascript) this can be
+used to compromise clients or web pages, especially if no end-to-end secure
+integrity validation is performed.  Even when software downloads have signature
+validation performed, this can provide a potential exposure for downgrade
+attacks, depending on client-side implementations.<a href="#section-6.2-3" class="pilcrow">¶</a></p>
+<p id="section-6.2-4">For site and media content, modification can be used to make content appear as
+authoritative to a user (delivered via HTTPS from a "trusted site") while
+actually containing selective modifications of the attackers choice, such as for
+the financial or political benefit of the attacker.<a href="#section-6.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="confused-deputy-issues-at-the-browser-or-origin">
+<section id="section-6.3">
+        <h3 id="name-confused-deputy-issues-at-t">
+<a href="#section-6.3" class="section-number selfRef">6.3. </a><a href="#name-confused-deputy-issues-at-t" class="section-name selfRef">Confused-deputy issues at the browser or origin</a>
+        </h3>
+<p id="section-6.3-1">HTTP clients make different decisions based on whether they are using HTTPS or
+HTTP -- for example, they send Secure cookies (cite), they enable certain Web
+features (high-resolution location, Service Workers).   This is principally a
+risk to <em>authentication</em>.<a href="#section-6.3-1" class="pilcrow">¶</a></p>
+<p id="section-6.3-2">This attack is only available with downgrade.  A related attack is available in
+the case of HTTP <em>upgrade</em>, in which a server makes a similar decision based on
+seeing HTTPS on its end of the connection.  In cases where HTTP requests are
+upgraded to HTTPS, CDN or proxy operators need to work with origin operators to
+control this complexity and prevent the complementary attack, such as by only
+performing upgrades for cache-able, static, and idempotent content.<a href="#section-6.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<section id="section-7">
+      <h2 id="name-normative-references">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+      </h2>
+<dl class="references">
+<dt id="RFC7258">[RFC7258]</dt>
+    <dd>
+<span class="refAuthor">Farrell, S.</span><span class="refAuthor"> and H. Tschofenig</span>, <span class="refTitle">"Pervasive Monitoring Is an Attack"</span>, <span class="seriesInfo">BCP 188</span>, <span class="seriesInfo">RFC 7258</span>, <span class="seriesInfo">DOI 10.17487/RFC7258</span>, <time datetime="2014-05" class="refDate">May 2014</time>, <span>&lt;<a href="https://doi.org/10.17487/RFC7258">https://doi.org/10.17487/RFC7258</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+<div id="acknowledgements">
+<section id="section-appendix.a">
+      <h2 id="name-acknowledgements">
+<a href="#section-appendix.a" class="section-number selfRef">Appendix A. </a><a href="#name-acknowledgements" class="section-name selfRef">Acknowledgements</a>
+      </h2>
+<p id="section-appendix.a-1">Thank you to Suneeth Jayan and others at Akamai who have helped develop best
+practices. Future versions of this draft hope to also incorporate best practices
+developed elsewhere.<a href="#section-appendix.a-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="section-appendix.b">
+      <h2 id="name-authors-addresses">
+<a href="#name-authors-addresses" class="section-name selfRef">Authors' Addresses</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Brian Sniffen</span></div>
+<div dir="auto" class="left"><span class="org">Akamai Technologies</span></div>
+<div dir="auto" class="left"><span class="street-address">145 Broadway</span></div>
+<div dir="auto" class="left">
+<span class="locality">Cambridge</span>,  <span class="postal-code">02139</span>
+</div>
+<div dir="auto" class="left"><span class="country-name">United States of America</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:bsniffen@akamai.com" class="email">bsniffen@akamai.com</a>
+</div>
+</address>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Mike Bishop</span></div>
+<div dir="auto" class="left"><span class="org">Akamai Technologies</span></div>
+<div dir="auto" class="left"><span class="street-address">145 Broadway</span></div>
+<div dir="auto" class="left">
+<span class="locality">Cambridge</span>,  <span class="postal-code">02139</span>
+</div>
+<div dir="auto" class="left"><span class="country-name">United States of America</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:mbishop@akamai.com" class="email">mbishop@akamai.com</a>
+</div>
+</address>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Erik Nygren</span></div>
+<div dir="auto" class="left"><span class="org">Akamai Technologies</span></div>
+<div dir="auto" class="left"><span class="street-address">145 Broadway</span></div>
+<div dir="auto" class="left">
+<span class="locality">Cambridge</span>,  <span class="postal-code">02139</span>
+</div>
+<div dir="auto" class="left"><span class="country-name">United States of America</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:nygren@akamai.com" class="email">nygren@akamai.com</a>
+</div>
+</address>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Rich Salz</span></div>
+<div dir="auto" class="left"><span class="org">Akamai Technologies</span></div>
+<div dir="auto" class="left"><span class="street-address">145 Broadway</span></div>
+<div dir="auto" class="left">
+<span class="locality">Cambridge</span>,  <span class="postal-code">02139</span>
+</div>
+<div dir="auto" class="left"><span class="country-name">United States of America</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:rsalz@akamai.com" class="email">rsalz@akamai.com</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>
